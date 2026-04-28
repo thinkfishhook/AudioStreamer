@@ -1249,8 +1249,7 @@ static void ASReadStreamCallBack(CFReadStreamRef aStream, CFStreamEventType even
   if ([[[_url scheme] lowercaseString] isEqualToString:@"https"]) {
     NSDictionary *sslSettings = @{
       (id)kCFStreamSSLLevel: (NSString*)kCFStreamSocketSecurityLevelNegotiatedSSL,
-      (id)kCFStreamSSLValidatesCertificateChain:  @YES,
-      (id)kCFStreamSSLPeerName:                   [NSNull null]
+      (id)kCFStreamSSLValidatesCertificateChain:  @YES
     };
 
     CFReadStreamSetProperty(stream, kCFStreamPropertySSLSettings,
@@ -1276,6 +1275,23 @@ static void ASReadStreamCallBack(CFReadStreamRef aStream, CFStreamEventType even
   return YES;
 }
 
+- (void)logReadStreamErrorDiagnosticsForStreamError:(CFStreamError)streamError
+                                      networkError:(NSError*)networkError {
+  NSString *copyErrorDescription = @"CFReadStreamCopyError=(null)";
+  if (networkError) {
+    copyErrorDescription = [NSString stringWithFormat:
+                            @"CFReadStreamCopyError(domain=%@, code=%ld, userInfo=%@)",
+                            [networkError domain],
+                            (long)[networkError code],
+                            [networkError userInfo]];
+  }
+
+  LOG_ERROR(@"network stream error diagnostics: CFReadStreamGetError(domain=%ld, error=%ld); %@",
+            (long)streamError.domain,
+            (long)streamError.error,
+            copyErrorDescription);
+}
+
 //
 // handleReadFromStream:eventType:
 //
@@ -1294,8 +1310,11 @@ static void ASReadStreamCallBack(CFReadStreamRef aStream, CFStreamEventType even
   switch (eventType) {
     case kCFStreamEventErrorOccurred: {
       LOG_INFO(@"error");
+      CFStreamError streamError = CFReadStreamGetError(aStream);
       /* Deprecated. Will eventually be a local variable. */
       NSError *networkError = (__bridge_transfer NSError*) CFReadStreamCopyError(aStream);
+      [self logReadStreamErrorDiagnosticsForStreamError:streamError
+                                           networkError:networkError];
       if (!_error) {
         if (buffersUsed != 0) {
           /* shouldStop = NO as we will retry connecting later */
